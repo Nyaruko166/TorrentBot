@@ -8,9 +8,13 @@ import net.lingala.zip4j.model.ZipParameters;
 import net.lingala.zip4j.model.enums.EncryptionMethod;
 
 import java.io.File;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 
 @Log4j2
 public class NyaUtil {
+
+    private static final DateTimeFormatter timeFormatter = DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm:ss");
 
     public static void sendPrivateMessage(MessageReceivedEvent event, String message) {
         event.getAuthor()
@@ -47,4 +51,9 @@ public class NyaUtil {
         }
     }
 
+    public static String getTimeStamp(MessageReceivedEvent event) {
+        return String.format("%s - %s",
+                event.getJDA().getSelfUser().getName(),
+                LocalDateTime.now().format(timeFormatter));
+    }
 }

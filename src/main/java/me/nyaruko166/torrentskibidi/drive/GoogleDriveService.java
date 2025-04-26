@@ -132,7 +132,7 @@ public class GoogleDriveService {
         return files;
     }
 
-    public String uploadFile(java.io.File file, String mimeType, MessageReceivedEvent event) {
+    public String uploadFile(java.io.File file, String mimeType, MessageReceivedEvent event, String notificationId) {
         try {
             // Create file metadata
             File fileMetadata = new File();
@@ -154,10 +154,10 @@ public class GoogleDriveService {
             request.getMediaHttpUploader()
                    .setProgressListener(
                            new FileUploadProgressListener(
-                           new OnProgressListener() {
+                           new OnDriveUploadProgressListener() {
                 @Override
                 public void onInitStarted() {
-                    NyaUtil.sendChannelMessage(event,"");
+//                    NyaUtil.sendChannelMessage(event,"");
                 }
 
                 @Override

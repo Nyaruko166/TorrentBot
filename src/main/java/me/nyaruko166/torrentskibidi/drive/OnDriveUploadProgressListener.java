@@ -1,6 +1,6 @@
 package me.nyaruko166.torrentskibidi.drive;
 
-public interface OnProgressListener {
+public interface OnDriveUploadProgressListener {
     void onInitStarted();
     void onInitCompleted();
     void onMediaProgress(double progress);

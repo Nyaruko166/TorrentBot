@@ -7,6 +7,7 @@ import me.nyaruko166.torrentskibidi.util.TorrentHelper;
 import net.dv8tion.jda.api.EmbedBuilder;
 import net.dv8tion.jda.api.Permission;
 import net.dv8tion.jda.api.entities.Message;
+import net.dv8tion.jda.api.entities.channel.unions.MessageChannelUnion;
 import net.dv8tion.jda.api.events.message.MessageReceivedEvent;
 import net.dv8tion.jda.api.hooks.ListenerAdapter;
 import org.apache.commons.io.FileUtils;
@@ -17,7 +18,6 @@ import org.libtorrent4j.SessionManager;
 import java.awt.*;
 import java.io.File;
 import java.io.IOException;
-import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
@@ -29,8 +29,6 @@ public class MessageReceiveListener extends ListenerAdapter {
     public ConcurrentHashMap<String, SessionManager> activeSessions = new ConcurrentHashMap<>();
 
     private final Logger log = LogManager.getLogger(MessageReceiveListener.class);
-    private final DateTimeFormatter timeFormatter = DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm:ss");
-
     private final GoogleDriveService driveService = new GoogleDriveService();
 
     @Override
@@ -85,60 +83,110 @@ public class MessageReceiveListener extends ListenerAdapter {
 
     private void startTorrentDownload(MessageReceivedEvent event) {
         // Check if the message contains attachments
+
+        EmbedBuilder eb = new EmbedBuilder();
+        eb.setColor(Color.PINK);
+        eb.setTitle("Placeholder for notification");
+        eb.setDescription("Notification will be updated here.");
+        eb.setFooter(NyaUtil.getTimeStamp(event));
+
+        MessageChannelUnion channel = event.getChannel();
+        String notificationId = channel.sendMessageEmbeds(eb.build()).complete().getId();
         List<Message.Attachment> attachments = event.getMessage().getAttachments();
 
         if (attachments.isEmpty()) {
-            event.getChannel().sendMessage("There is no attachment...").queue();
-            return;
-        }
+            channel.editMessageEmbedsById(notificationId, new EmbedBuilder()
+                    .setColor(Color.RED)
+                    .setFooter(NyaUtil.getTimeStamp(event))
+                    .setTitle("There is no attachment !!")
+                    .setDescription("Please provide valid torrent file attachment...")
+                    .build()).queue();
+        } else {
+            for (Message.Attachment attachment : attachments) {
+                if (attachment.getFileName().endsWith(".torrent")) {
+                    channel.editMessageEmbedsById(notificationId, new EmbedBuilder()
+                            .setColor(Color.CYAN)
+                            .setFooter(NyaUtil.getTimeStamp(event))
+                            .setTitle("Found torrent file !!")
+                            .setDescription("Starting download torrent...")
+                            .build()).queue();
 
-        for (Message.Attachment attachment : attachments) {
-            if (attachment.getFileName().endsWith(".torrent")) {
-                event.getChannel().sendMessage("Detected a .torrent file: " + attachment.getFileName()).queue();
+                    String torrentName = attachment.getFileName().replace(".torrent", "");
 
-                String torrentName = attachment.getFileName().replace(".torrent", "");
-
-                File torrentFile =
-                        new File(DOWNLOAD_PATH + torrentName, attachment.getFileName());
-                if (!torrentFile.exists()) {
-                    torrentFile.getParentFile().mkdirs();
-                }
-
-                attachment.getProxy().downloadToFile(torrentFile).thenRun(() -> {
-                    event.getChannel().sendMessage("Downloading torrent file: " + attachment.getFileName()).queue();
-                    SessionManager session = new SessionManager();
-                    activeSessions.put(torrentFile.getName(), session);
-                    NyaUtil.sendChannelMessage(event, "To stop download using !stop %s".formatted(torrentFile.getName()));
-                    File downloadFolder = TorrentHelper.torrentDownload(session, torrentFile, event);
-                    activeSessions.remove(torrentFile.getName());
-                    File zipFile = new File(DOWNLOAD_PATH + torrentName + ".zip");
-                    if (zipFile.exists()) {
-                        try {
-                            FileUtils.delete(zipFile); //Clean if zipfile exist
-                        } catch (IOException e) {
-                            log.error("Error when cleaning Zip file", e);
-                        }
+                    File torrentFile =
+                            new File(DOWNLOAD_PATH + torrentName, attachment.getFileName());
+                    if (!torrentFile.exists()) {
+                        torrentFile.getParentFile().mkdirs();
                     }
-                    String authorTag = event.getAuthor().getAsTag();
-                    NyaUtil.sendChannelMessage(event, "Creating archive from torrent folder, may take sometime...");
-                    if (NyaUtil.compressFolder(zipFile, authorTag.substring(0, authorTag.indexOf("#")), downloadFolder)) {
-                        NyaUtil.sendChannelMessage(event, "Created archive from torrent folder, starting to upload...");
-                        String fileId = driveService.uploadFile(zipFile, MimeType.APPLICATION_ZIP, event);
-                        if (fileId != null) {
-                            NyaUtil.sendChannelMessage(event, "Download link: https://drive.usercontent.google.com/download?id=%s".formatted(fileId));
+
+                    attachment.getProxy().downloadToFile(torrentFile).thenRun(() -> {
+                        SessionManager session = new SessionManager();
+                        activeSessions.put(torrentFile.getName(), session);
+                        NyaUtil.sendChannelMessage(event, "To stop download using !stop %s".formatted(torrentFile.getName()));
+                        File downloadFolder = TorrentHelper.torrentDownload(session, torrentFile, event, notificationId);
+                        activeSessions.remove(torrentFile.getName());
+                        File zipFile = new File(DOWNLOAD_PATH + torrentName + ".zip");
+                        if (zipFile.exists()) {
+                            try {
+                                FileUtils.delete(zipFile); //Clean if zipfile exist
+                            } catch (IOException e) {
+                                log.error("Error when cleaning Zip file", e);
+                            }
+                        }
+                        String authorTag = event.getAuthor().getAsTag();
+                        channel.editMessageEmbedsById(notificationId, new EmbedBuilder()
+                                .setColor(Color.CYAN)
+                                .setFooter(NyaUtil.getTimeStamp(event))
+                                .setTitle("Creating archive from torrent file !!")
+                                .setDescription("Compress file may take sometime...")
+                                .build()).queue();
+                        if (NyaUtil.compressFolder(zipFile, authorTag.substring(0, authorTag.indexOf("#")), downloadFolder)) {
+                            channel.editMessageEmbedsById(notificationId, new EmbedBuilder()
+                                    .setColor(Color.CYAN)
+                                    .setFooter(NyaUtil.getTimeStamp(event))
+                                    .setTitle("Created archive from torrent folder !!")
+                                    .setDescription("Starting to upload......")
+                                    .build()).queue();
+                            String fileId = driveService.uploadFile(zipFile, MimeType.APPLICATION_ZIP, event, notificationId);
+                            if (fileId != null) {
+                                channel.editMessageEmbedsById(notificationId, new EmbedBuilder()
+                                        .setColor(Color.GREEN)
+                                        .setFooter(NyaUtil.getTimeStamp(event))
+                                        .setTitle("Torrent Is Ready To Ship !!")
+                                        .setDescription("Upload completed, file will be store online in 5 days...")
+                                        .addField("Torrent name:", torrentName, false)
+                                        .addField("Download link:", "[Here](https://drive.usercontent.google.com/download?id=%s".formatted(fileId), false)
+                                        .build()).queue();
 //                            Todo clean up
 //                            TorrentHelper.cleanupFolder();
-                        } else NyaUtil.sendChannelMessage(event, "Error when uploading torrent file to drive.");
-                    } else
-                        NyaUtil.sendChannelMessage(event, "Failed to create archive from torrent...");
-                }).exceptionally(ex -> {
-                    event.getChannel().sendMessage("Failed to save torrent file!").queue();
-                    log.error("Failed to save torrent file!", ex);
-                    return null;
-                });
-                return; // Stop after finding the first .torrent file
-            } else {
-                event.getChannel().sendMessage("Please attach a valid .torrent file!").queue();
+                            } else channel.editMessageEmbedsById(notificationId, new EmbedBuilder()
+                                    .setColor(Color.RED)
+                                    .setFooter(NyaUtil.getTimeStamp(event))
+                                    .setTitle("Error when uploading torrent file to drive !!")
+                                    .build()).queue();
+                        } else
+                            channel.editMessageEmbedsById(notificationId, new EmbedBuilder()
+                                    .setColor(Color.RED)
+                                    .setFooter(NyaUtil.getTimeStamp(event))
+                                    .setTitle("Failed to created archive !!")
+                                    .build()).queue();
+                    }).exceptionally(ex -> {
+                        channel.editMessageEmbedsById(notificationId, new EmbedBuilder()
+                                .setColor(Color.RED)
+                                .setFooter(NyaUtil.getTimeStamp(event))
+                                .setTitle("Failed to save torrent attachment !!")
+                                .build()).queue();
+                        log.error("Failed to save torrent file!", ex);
+                        return null;
+                    });
+                    return; // Stop after finding the first .torrent file
+                } else {
+                    channel.editMessageEmbedsById(notificationId, new EmbedBuilder()
+                            .setColor(Color.RED)
+                            .setFooter(NyaUtil.getTimeStamp(event))
+                            .setTitle("Please attach valid torrent file !!")
+                            .build()).queue();
+                }
             }
         }
     }
@@ -175,10 +223,14 @@ public class MessageReceiveListener extends ListenerAdapter {
         event.getChannel().sendMessageEmbeds(helpEmbed.build()).queue();
     }
 
-
     private void handlePruneCommand(MessageReceivedEvent event, String args) {
         if (args.isEmpty()) {
             event.getChannel().sendMessage("Please specify the number of messages to delete.").queue();
+            return;
+        }
+
+        if (hasAdminPermission(event)) {
+            NyaUtil.sendChannelMessage(event, "You don't have permission to perform this command.");
             return;
         }
 

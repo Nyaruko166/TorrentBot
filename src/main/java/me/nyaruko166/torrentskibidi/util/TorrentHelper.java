@@ -2,6 +2,7 @@ package me.nyaruko166.torrentskibidi.util;
 
 import lombok.SneakyThrows;
 import me.nyaruko166.torrentskibidi.discord.NyaUtil;
+import net.dv8tion.jda.api.EmbedBuilder;
 import net.dv8tion.jda.api.events.message.MessageReceivedEvent;
 import org.apache.commons.io.FileUtils;
 import org.apache.logging.log4j.LogManager;
@@ -17,6 +18,7 @@ import org.libtorrent4j.alerts.AlertType;
 import org.libtorrent4j.alerts.BlockFinishedAlert;
 import org.libtorrent4j.alerts.TorrentFinishedAlert;
 
+import java.awt.*;
 import java.io.File;
 import java.io.IOException;
 import java.util.concurrent.CountDownLatch;
@@ -26,7 +28,7 @@ public class TorrentHelper {
     private static final Logger log = LogManager.getLogger(TorrentHelper.class);
 
     @SneakyThrows
-    public static File torrentDownload(SessionManager session, File torrentFile, MessageReceivedEvent event) {
+    public static File torrentDownload(SessionManager session, File torrentFile, MessageReceivedEvent event, String notificationId) {
         final int[] lastProgress = {-1};
 
         final boolean[] check = {false};
@@ -62,8 +64,14 @@ public class TorrentHelper {
                         int seeds = status.numSeeds();
                         int downloadRate = status.downloadRate(); // Bytes per second
 
+                        EmbedBuilder eb = new EmbedBuilder();
+                        eb.setFooter(NyaUtil.getTimeStamp(event));
+
                         if (seeds == 0) {
-                            NyaUtil.sendChannelMessage(event, "[ERROR] No seeds available during download. Aborting.");
+                            eb.setColor(Color.RED);
+                            eb.setTitle("Error");
+                            eb.setDescription("No seeds available during download. Aborting.");
+                            event.getChannel().editMessageEmbedsById(notificationId, eb.build()).queue();
                             System.err.println("[ERROR] No seeds available during download. Aborting.");
                             cleanupFiles(torrentFile.getName());
                             session.stop();
@@ -80,18 +88,31 @@ public class TorrentHelper {
                         }
 
                         if (progress != lastProgress[0]) { // Print only when progress changes
-                            String res = "[PROGRESS] %s: %d%% (%d/%d bytes) | Seeds: %d | ETA: %s\n"
-                                    .formatted(blockAlert.torrentName(), progress, downloadedBytes, totalSize, seeds, etaString);
+                            eb.setColor(Color.CYAN);
+                            eb.setTitle("Downloading Progress");
+                            eb.setDescription(blockAlert.torrentName());
+                            eb.addField("Progress", progress + "%", true);
+                            eb.addField("Downloaded Bytes", "%d/%d bytes".formatted(downloadedBytes, totalSize), true);
+                            eb.addField("ETA", etaString, true);
+//                            String res = "[PROGRESS] %s: %d%% (%d/%d bytes) | Seeds: %d | ETA: %s\n"
+//                                    .formatted(blockAlert.torrentName(), progress, downloadedBytes, totalSize, seeds, etaString);
                             if (progress % 10 == 0) {
-                                NyaUtil.sendChannelMessage(event, res);
+                                eb.setFooter(NyaUtil.getTimeStamp(event));
+                                event.getChannel().editMessageEmbedsById(notificationId, eb.build()).queue();
 //                                log.info(res);
                             }
                             lastProgress[0] = progress;
                         }
                         break;
                     case TORRENT_FINISHED:
+                        event.getChannel().editMessageEmbedsById(notificationId, new EmbedBuilder()
+                                .setColor(Color.GREEN)
+                                .setTitle("Torrent Download Completed !!")
+                                .setDescription("Download %s completed!%n".formatted(((TorrentFinishedAlert) alert).torrentName()))
+                                .setFooter(NyaUtil.getTimeStamp(event))
+                                .build()).queue();
+
                         String res = "[SUCCESS] Download %s completed!%n".formatted(((TorrentFinishedAlert) alert).torrentName());
-                        NyaUtil.sendChannelMessage(event, res);
                         log.info(res);
                         signal.countDown();
                         check[0] = true;

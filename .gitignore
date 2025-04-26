@@ -4,6 +4,7 @@ target/
 !**/src/main/**/target/
 !**/src/test/**/target/
 libtorrent4j.dll
+/libs/*
 
 ### STS ###
 .apt_generated
